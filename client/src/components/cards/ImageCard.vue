@@ -22,10 +22,7 @@
 
       <div class="card-body" style="width: 100%" :style="{'opacity': annotated ? 0.3 : 1}">
         <div class="row" style="width: 100%">
-          <span
-            :class="{ 'text-truncate': !hover }"
-            style="width: 100%; float: left"
-          >
+          <span class="image-name">
             <strong class="card-title">
               {{ image.id }}. {{ image.file_name }}
             </strong>
@@ -177,6 +174,14 @@ export default {
 .card-body {
   margin: 5px 5px 0 5px;
   padding: 10px 20px;
+}
+
+.image-name {
+  display: block;
+  width: 100%;
+  word-break: break-all;
+  white-space: normal;
+  text-align: left;
 }
 
 p {

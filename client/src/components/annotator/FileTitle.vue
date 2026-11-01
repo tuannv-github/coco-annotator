@@ -13,10 +13,8 @@
       @click="route(nextimage)"
     />
 
-    <h6 class="text-center" style="color: white;">
-      <span class="d-inline-block text-truncate" style="max-width: 73%;">{{
-        filename
-      }}</span>
+    <h6 class="text-center filename" style="color: white;">
+      {{ filename }}
     </h6>
   </div>
 </template>
@@ -63,5 +61,11 @@ export default {
   color: white;
   position: relative;
   margin: 0 10px 15px 10px;
+}
+
+.filename {
+  margin: 0 28px;
+  word-break: break-all;
+  white-space: normal;
 }
 </style>
