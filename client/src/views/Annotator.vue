@@ -1,5 +1,5 @@
 <template>
-  <div style="display: block; height: inherit;">
+  <div class="annotator">
     
     <aside v-show="panels.show.left" class="left-panel shadow-lg">
       <div v-show="mode == 'segment'">
@@ -201,7 +201,14 @@
       </div>
     </aside>
 
-    <div class="middle-panel" :style="{ cursor: cursor }">
+    <div
+      class="middle-panel"
+      :style="{
+        cursor: cursor,
+        left: panels.show.left ? '40px' : '0',
+        right: panels.show.right ? '250px' : '0'
+      }"
+    >
     <v-touch @pinch="onpinch" @pinchstart="onpinchstart">
       <div id="frame" class="frame" @wheel="onwheel">
         <canvas class="canvas" id="editor" ref="image" resize />
@@ -482,18 +489,24 @@ export default {
       return false;
     },
     fit() {
-      let canvas = document.getElementById("editor");
-
+      let frame = document.getElementById("frame");
       let parentX = this.image.raster.width;
       let parentY = this.image.raster.height;
+      // Use the visible frame. canvas.width is the backing store and is
+      // devicePixelRatio times larger, which made the reset image overflow.
+      let width = frame.clientWidth;
+      let height = frame.clientHeight;
+      if (!parentX || !parentY || !width || !height) return;
 
-      this.paper.view.zoom = Math.min(
-        (canvas.width / parentX) * 0.95,
-        (canvas.height / parentY) * 0.8
+      let view = this.paper.view;
+      view.viewSize = [width, height];
+      view.zoom = Math.min(
+        (width / parentX) * 0.95,
+        (height / parentY) * 0.8
       );
 
-      this.image.scale = 1 / this.paper.view.zoom;
-      this.paper.view.setCenter(0, 0);
+      this.image.scale = 1 / view.zoom;
+      view.setCenter(0, 0);
     },
     changeZoom(delta, p) {
       let oldZoom = this.paper.view.zoom;
@@ -515,10 +528,8 @@ export default {
 
       let canvas = document.getElementById("editor");
       this.paper.setup(canvas);
-      this.paper.view.viewSize = [
-        this.paper.view.size.width,
-        window.innerHeight
-      ];
+      let frame = document.getElementById("frame");
+      this.paper.view.viewSize = [frame.clientWidth, frame.clientHeight];
       this.paper.activate();
 
       this.image.raster = new paper.Raster(this.image.url);
@@ -1109,6 +1120,12 @@ export default {
   background: #9feeb0;
 }
 
+.annotator {
+  position: relative;
+  display: block;
+  height: 100%;
+}
+
 .left-panel {
   background-color: #4b5162;
   width: 40px;
@@ -1128,11 +1145,19 @@ export default {
 
 .middle-panel {
   display: block;
-  width: inherit;
-  height: inherit;
+  position: absolute;
+  top: 56px;
+  right: 250px;
+  bottom: 0;
+  left: 40px;
   background-color: #7c818c;
   overflow: hidden;
-  position: relative;
+}
+
+.middle-panel >>> div {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .frame {
