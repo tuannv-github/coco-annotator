@@ -1,3 +1,5 @@
+import os
+
 from flask import send_file
 from flask_restplus import Namespace, Resource, reqparse
 from flask_login import login_required, current_user
@@ -67,5 +69,7 @@ class DatasetExports(Resource):
         if not current_user.can_download(dataset):
             return {"message": "You do not have permission to download the dataset's annotations"}, 403
 
-        return send_file(export.path, attachment_filename=f"{dataset.name.encode('utf-8')}-{'-'.join(export.tags).encode('utf-8')}.json", as_attachment=True)
+        _, extension = os.path.splitext(export.path)
+        name = f"{dataset.name}-{'-'.join(export.tags)}{extension or '.json'}"
+        return send_file(export.path, attachment_filename=name, as_attachment=True)
 

@@ -47,6 +47,7 @@ coco_upload.add_argument('coco', location='files', type=FileStorage, required=Tr
 export = reqparse.RequestParser()
 export.add_argument('categories', type=str, default=None, required=False, help='Ids of categories to export')
 export.add_argument('with_empty_images', type=inputs.boolean, default=False, required=False, help='Export with un-annotated images')
+export.add_argument('format', type=str, default='coco', required=False, help='coco or yolo')
 
 update_dataset = reqparse.RequestParser()
 update_dataset.add_argument('categories', location='json', type=list, help="New list of categories")
@@ -515,21 +516,28 @@ class DatasetExport(Resource):
     def get(self, dataset_id):
 
         args = export.parse_args()
-        categories = args.get('categories')
+        categories = args.get('categories') or ""
         with_empty_images = args.get('with_empty_images', False)
-        
+        export_format = (args.get('format') or 'coco').lower()
+        if export_format not in ('coco', 'yolo'):
+            return {'message': 'format must be coco or yolo'}, 400
+
         if len(categories) == 0:
             categories = []
 
         if len(categories) > 0 or isinstance(categories, str):
-            categories = [int(c) for c in categories.split(',')]
+            categories = [int(c) for c in categories.split(',') if c]
 
         dataset = DatasetModel.objects(id=dataset_id).first()
         
         if not dataset:
             return {'message': 'Invalid dataset ID'}, 400
         
-        return dataset.export_coco(categories=categories, with_empty_images=with_empty_images)
+        return dataset.export_coco(
+            categories=categories,
+            with_empty_images=with_empty_images,
+            export_format=export_format
+        )
     
     @api.expect(coco_upload)
     @login_required

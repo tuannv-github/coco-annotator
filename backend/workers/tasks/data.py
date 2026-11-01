@@ -10,10 +10,12 @@ from database import (
 )
 
 # import pycocotools.mask as mask
+import datetime
 import numpy as np
-import time
 import json
 import os
+import shutil
+import zipfile
 
 from celery import shared_task
 from config import Config
@@ -21,8 +23,96 @@ from ..socket import create_socket
 from mongoengine import Q
 
 
+def _yolo_box(annotation, width, height):
+    bbox = annotation.get("bbox") or []
+    if len(bbox) == 4 and bbox[2] > 0 and bbox[3] > 0:
+        x, y, w, h = [float(value) for value in bbox]
+    else:
+        bounds = []
+        for polygon in annotation.get("segmentation") or []:
+            if not isinstance(polygon, list) or len(polygon) < 4:
+                continue
+            xs = polygon[0::2]
+            ys = polygon[1::2]
+            bounds.append((min(xs), min(ys), max(xs), max(ys)))
+        if not bounds or width <= 0 or height <= 0:
+            return None
+        x = min(item[0] for item in bounds)
+        y = min(item[1] for item in bounds)
+        w = max(item[2] for item in bounds) - x
+        h = max(item[3] for item in bounds) - y
+    if width <= 0 or height <= 0 or w <= 0 or h <= 0:
+        return None
+    cx = min(max((x + w / 2.0) / width, 0.0), 1.0)
+    cy = min(max((y + h / 2.0) / height, 0.0), 1.0)
+    nw = min(max(w / width, 0.0), 1.0)
+    nh = min(max(h / height, 0.0), 1.0)
+    if nw <= 0 or nh <= 0:
+        return None
+    return cx, cy, nw, nh
+
+
+def _write_yolo(task, dataset, coco, directory):
+    images_dir = os.path.join(directory, "images")
+    labels_dir = os.path.join(directory, "labels")
+    os.makedirs(images_dir, exist_ok=True)
+    os.makedirs(labels_dir, exist_ok=True)
+
+    class_index = {
+        category["id"]: index for index, category in enumerate(coco["categories"])
+    }
+    by_image = {}
+    for annotation in coco["annotations"]:
+        by_image.setdefault(annotation["image_id"], []).append(annotation)
+
+    names = []
+    for index, category in enumerate(coco["categories"]):
+        name = str(category.get("name", index)).replace("'", "''")
+        names.append(f"  {index}: '{name}'")
+    with open(os.path.join(directory, "data.yaml"), "w") as handle:
+        handle.write("path: .\ntrain: images\nval: images\nnames:\n")
+        handle.write("\n".join(names))
+        handle.write("\n")
+
+    for image in coco["images"]:
+        file_name = image.get("file_name")
+        if not file_name:
+            continue
+        stem = os.path.splitext(file_name)[0]
+        lines = []
+        for annotation in by_image.get(image.get("id"), []):
+            class_id = class_index.get(annotation.get("category_id"))
+            if class_id is None:
+                continue
+            box = _yolo_box(annotation, image.get("width") or 0, image.get("height") or 0)
+            if box is None:
+                continue
+            lines.append(
+                f"{class_id} {box[0]:.6f} {box[1]:.6f} {box[2]:.6f} {box[3]:.6f}"
+            )
+        with open(os.path.join(labels_dir, stem + ".txt"), "w") as handle:
+            if lines:
+                handle.write("\n".join(lines))
+                handle.write("\n")
+        destination = os.path.join(images_dir, file_name)
+        source = image.get("path") or os.path.join(dataset.directory, file_name)
+        if os.path.islink(destination) or not os.path.isfile(destination):
+            if os.path.lexists(destination):
+                os.remove(destination)
+            shutil.copy2(source, destination)
+
+    zip_path = directory + ".zip"
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for folder, _, files in os.walk(directory):
+            for name in files:
+                full = os.path.join(folder, name)
+                archive.write(full, os.path.relpath(full, os.path.dirname(directory)))
+    task.info(f"Writing YOLO dataset to {directory}")
+    return zip_path
+
+
 @shared_task
-def export_annotations(task_id, dataset_id, categories, with_empty_images=False):
+def export_annotations(task_id, dataset_id, categories, with_empty_images=False, export_format="coco"):
 
     task = TaskModel.objects.get(id=task_id)
     dataset = DatasetModel.objects.get(id=dataset_id)
@@ -30,7 +120,8 @@ def export_annotations(task_id, dataset_id, categories, with_empty_images=False)
     task.update(status="PROGRESS")
     socket = create_socket()
 
-    task.info("Beginning Export (COCO Format)")
+    export_format = (export_format or "coco").lower()
+    task.info(f"Beginning Export ({export_format.upper()} format)")
 
     db_categories = CategoryModel.objects(id__in=categories, deleted=False) \
         .only(*CategoryModel.COCO_PROPERTIES)
@@ -114,18 +205,25 @@ def export_annotations(task_id, dataset_id, categories, with_empty_images=False)
     task.info(
         f"Done export {total_annotations} annotations and {total_images} images from {dataset.name}")
 
-    timestamp = time.time()
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     directory = os.path.join(Config.EXPORT_DIRECTORY.rstrip("/"), dataset.name)
-    file_path = os.path.join(directory, f"coco-{timestamp}.json")
     os.makedirs(directory, exist_ok=True)
 
-    task.info(f"Writing export to file {file_path}")
-    with open(file_path, 'w') as fp:
-        json.dump(coco, fp)
+    if export_format == "yolo":
+        folder = os.path.join(directory, f"yolo_{timestamp}")
+        os.makedirs(folder, exist_ok=True)
+        file_path = _write_yolo(task, dataset, coco, folder)
+        tag = "YOLO"
+    else:
+        file_path = os.path.join(directory, f"coco_{timestamp}.json")
+        task.info(f"Writing export to file {file_path}")
+        with open(file_path, 'w') as fp:
+            json.dump(coco, fp)
+        tag = "COCO"
 
     task.info("Creating export object")
     export = ExportModel(dataset_id=dataset.id, path=file_path, tags=[
-                         "COCO", *category_names])
+                         tag, *category_names])
     export.save()
 
     task.set_progress(100, socket=socket)

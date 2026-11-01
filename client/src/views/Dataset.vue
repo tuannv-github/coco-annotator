@@ -420,23 +420,39 @@
               <span aria-hidden="true">&times;</span>
             </button>
           </div>
-          <div class="modal-body">
+          <div class="modal-body export-body">
             <form>
               <div class="form-group">
-                <label>Categories (Empty export all)</label>
-                <TagsInput
-                  v-model="exporting.categories"
-                  element-id="exportCategories"
-                  :existing-tags="categoryTags"
-                  :typeahead="true"
-                  :typeahead-activation-threshold="0"
-                ></TagsInput>
+                <label class="export-label" for="export-format">Format</label>
+                <select id="export-format" class="export-format" v-model="exporting.format">
+                  <option value="coco">COCO</option>
+                  <option value="yolo">YOLO</option>
+                </select>
               </div>
-              <div>
-                <input type="checkbox" class="form-check-input"
-                  v-model="exporting.with_empty_images">
-                <label class="form-check-label">export with not annotated images</label>
+              <div class="form-group">
+                <label class="export-label">Categories (empty exports all)</label>
+                <div class="export-box">
+                  <p v-if="categories.length == 0" class="export-empty">
+                    No categories are enabled for this dataset.
+                  </p>
+                  <label
+                    v-for="category in categories"
+                    :key="category.id"
+                    class="export-option"
+                  >
+                    <input
+                      type="checkbox"
+                      :value="category.id"
+                      v-model="exporting.categories"
+                    />
+                    <span>{{ category.name }}</span>
+                  </label>
+                </div>
               </div>
+              <label class="export-option">
+                <input type="checkbox" v-model="exporting.with_empty_images" />
+                <span>export with not annotated images</span>
+              </label>
             </form>
           </div>
           <div class="modal-footer">
@@ -532,6 +548,7 @@ export default {
       },
       exporting: {
         categories: [],
+        format: "coco",
         progress: 0,
         with_empty_images: false,
         id: null
@@ -657,7 +674,12 @@ export default {
     },
     exportCOCO() {
       $("#exportDataset").modal("hide");
-      Dataset.exportingCOCO(this.dataset.id, this.exporting.categories, this.exporting.with_empty_images)
+      Dataset.exportingCOCO(
+        this.dataset.id,
+        this.exporting.categories,
+        this.exporting.with_empty_images,
+        this.exporting.format
+      )
         .then(response => {
           let id = response.data.id;
           this.exporting.id = id;
@@ -901,5 +923,52 @@ export default {
   background-color: #383c4a;
   padding: 0 5px 2px 5px;
   overflow: auto;
+}
+
+.export-body {
+  text-align: left;
+}
+
+.export-label {
+  display: block;
+  margin-bottom: 0.4rem;
+}
+
+.export-format {
+  display: block;
+  width: 100%;
+  height: 2rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid #dbdbdb;
+  border-radius: 0.25rem;
+  background: #fff;
+}
+
+.export-box {
+  background: #fff;
+  border: 1px solid #dbdbdb;
+  border-radius: 0.25rem;
+  padding: 0.35rem 0.75rem;
+}
+
+.export-option {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.6rem;
+  margin: 0.45rem 0;
+  font-weight: 400;
+  cursor: pointer;
+}
+
+.export-option input {
+  position: static;
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+.export-empty {
+  margin: 0.35rem 0;
+  color: #6c757d;
 }
 </style>
