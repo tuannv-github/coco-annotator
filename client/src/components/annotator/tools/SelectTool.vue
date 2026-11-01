@@ -182,12 +182,28 @@ export default {
     },
     bboxCompound(item) {
       if (!item) return null;
-      let compound = item.className === "CompoundPath" ? item : item.parent;
-      if (!compound || compound.className !== "CompoundPath") return null;
-      if (!this.checkBbox(compound)) return null;
-      let path = compound.children && compound.children[0];
-      if (!path || !path.segments || path.segments.length < 4) return null;
+      let compound = item;
+      while (compound && compound.className !== "CompoundPath") {
+        compound = compound.parent;
+      }
+      if (!compound || !this.checkBbox(compound)) return null;
+      let path = this.bboxPath(compound);
+      if (!path) return null;
       return compound;
+    },
+    bboxPath(compound) {
+      let found = null;
+      let visit = item => {
+        if (!item || found) return;
+        if (item.segments && item.segments.length >= 4) {
+          found = item;
+          return;
+        }
+        let children = item.children || [];
+        for (let i = 0; i < children.length; i++) visit(children[i]);
+      };
+      visit(compound);
+      return found;
     },
     bboxEdgesNear(path, point, tolerance) {
       let bounds = path.bounds;
@@ -244,7 +260,8 @@ export default {
       for (let i = children.length - 1; i >= 0; i--) {
         let compound = this.bboxCompound(children[i]);
         if (!compound || !compound.visible) continue;
-        let path = compound.children[0];
+        let path = this.bboxPath(compound);
+        if (!path) continue;
         let bounds = path.bounds;
         if (
           point.x < bounds.left - tolerance ||

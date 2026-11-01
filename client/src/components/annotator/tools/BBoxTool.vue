@@ -27,6 +27,7 @@ export default {
       scaleFactor: 3,
       cursor: "copy",
       bbox: null,
+      editingBbox: false,
       polygon: {
         path: null,
         guidance: true,
@@ -110,7 +111,17 @@ export default {
         !!this.$parent.currentAnnotation.annotation.paper_object.length
       );
     },
+    selectTool() {
+      return this.$parent.$refs.select;
+    },
     onMouseDown(event) {
+      if (this.polygon.path == null) {
+        let select = this.selectTool();
+        if (select && select.beginBboxDrag(event)) {
+          this.editingBbox = true;
+          return;
+        }
+      }
       if (this.polygon.path == null && this.checkAnnotationExist()) {
         this.$parent.currentCategory.createAnnotation();
       }
@@ -123,7 +134,27 @@ export default {
 
       if (this.completeBBox()) return;
     },
+    onMouseDrag(event) {
+      if (!this.editingBbox) return;
+      let select = this.selectTool();
+      if (select) select.onMouseDrag(event);
+    },
+    onMouseUp(event) {
+      if (!this.editingBbox) return;
+      let select = this.selectTool();
+      if (select) select.onMouseUp(event);
+      this.editingBbox = false;
+    },
     onMouseMove(event) {
+      if (this.editingBbox) return;
+      if (this.polygon.path == null) {
+        let select = this.selectTool();
+        if (select && select.bboxHit(event.point)) {
+          select.syncBboxCursor(event.point);
+          return;
+        }
+        this.$emit("setcursor", this.cursor);
+      }
       if (this.polygon.path == null) return;
       if (this.polygon.path.segments.length === 0) return;
       this.autoStrokeColor(event.point);

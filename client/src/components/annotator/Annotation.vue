@@ -669,6 +669,34 @@ export default {
       this.keypoints.bringToFront();
 
       if (simplify) this.simplifyPath();
+      if (isBBox) this.normalizeBbox();
+    },
+    normalizeBbox() {
+      if (this.compoundPath == null) return;
+      let bounds = this.compoundPath.bounds;
+      if (!bounds || bounds.width < 1 || bounds.height < 1) return;
+
+      let path = new paper.Path();
+      path.add(new paper.Point(bounds.left, bounds.top));
+      path.add(new paper.Point(bounds.right, bounds.top));
+      path.add(new paper.Point(bounds.right, bounds.bottom));
+      path.add(new paper.Point(bounds.left, bounds.bottom));
+      path.closed = true;
+
+      let compound = new paper.CompoundPath();
+      compound.addChild(path);
+      compound.data.annotationId = this.index;
+      compound.data.categoryId = this.categoryIndex;
+      compound.fillColor = this.color;
+      compound.opacity = this.opacity;
+      compound.onDoubleClick = this.compoundPath.onDoubleClick;
+      compound.onClick = this.compoundPath.onClick;
+      compound.fullySelected = this.isCurrent;
+
+      this.compoundPath.remove();
+      this.compoundPath = compound;
+      this.keypoints.bringToFront();
+      this.emitModify();
     },
     /**
      * Subtract current annotation path with anyother path.
