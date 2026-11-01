@@ -238,45 +238,50 @@ export default {
     },
     bboxHit(point) {
       let tolerance = Math.max(this.edit.indicatorSize || 0, 8);
-      let project = this.$parent.paper.project;
-      let ignoreIndicator = hit => !hit.item.hasOwnProperty("indicator");
-      let segmentHit = project.hitTest(point, {
-        segments: true,
-        stroke: true,
-        fill: false,
-        tolerance: tolerance,
-        match: ignoreIndicator
-      });
-      if (
-        segmentHit &&
-        !this.bboxCompound(segmentHit.item) &&
-        !segmentHit.item.hasOwnProperty("indicator")
-      ) {
-        return null;
+      let layer = this.$parent.paper.project && this.$parent.paper.project.activeLayer;
+      if (!layer) return null;
+      let children = layer.children || [];
+      for (let i = children.length - 1; i >= 0; i--) {
+        let compound = this.bboxCompound(children[i]);
+        if (!compound || !compound.visible) continue;
+        let path = compound.children[0];
+        let bounds = path.bounds;
+        if (
+          point.x < bounds.left - tolerance ||
+          point.x > bounds.right + tolerance ||
+          point.y < bounds.top - tolerance ||
+          point.y > bounds.bottom + tolerance
+        ) {
+          continue;
+        }
+        let edges = this.bboxEdgesNear(path, point, tolerance);
+        if (edges) {
+          return {
+            mode: "resize",
+            path: path,
+            edges: edges,
+            bounds: bounds.clone()
+          };
+        }
+        if (
+          point.x >= bounds.left &&
+          point.x <= bounds.right &&
+          point.y >= bounds.top &&
+          point.y <= bounds.bottom
+        ) {
+          return { mode: "move", path: path };
+        }
       }
-      let fillHit = project.hitTest(point, {
-        fill: true,
-        stroke: false,
-        segments: false,
-        tolerance: tolerance,
-        match: ignoreIndicator
-      });
-      if (!fillHit) return null;
-      let compound = this.bboxCompound(fillHit.item);
-      if (!compound) return null;
-      let path = compound.children[0];
-      let edges = this.bboxEdgesNear(path, point, tolerance);
-      if (!edges) return { mode: "move", path: path };
-      return {
-        mode: "resize",
-        path: path,
-        edges: edges,
-        bounds: path.bounds.clone()
-      };
+      return null;
     },
     beginBboxDrag(event) {
       let hit = this.bboxHit(event.point);
       if (!hit) return false;
+      let data = (hit.path.parent && hit.path.parent.data) || {};
+      let category = this.$parent.getCategory(data.categoryId);
+      if (category && data.annotationId != null) {
+        category.onAnnotationClick(data.annotationId);
+      }
       if (hit.mode === "move") {
         this.bboxDrag = {
           mode: "move",

@@ -539,6 +539,8 @@ export default {
 
         this.image.raster.sendToBack();
         this.fit();
+        this.raiseAnnotations();
+        this.activateCurrentTool();
         this.image.ratio = (width * height) / 1000000;
         this.removeProcess(process);
 
@@ -618,6 +620,8 @@ export default {
 
           this.$nextTick(() => {
             this.showAll();
+            this.raiseAnnotations();
+            this.activateCurrentTool();
           });
 
           if (callback != null) callback();
@@ -687,6 +691,32 @@ export default {
 
     selectLastEditorTool() {
       this.activeTool = localStorage.getItem("editorTool") || "Select";
+      this.activateCurrentTool();
+    },
+    activateCurrentTool() {
+      let tools = [
+        this.$refs.select,
+        this.$refs.bbox,
+        this.$refs.polygon,
+        this.$refs.magicwand,
+        this.$refs.brush,
+        this.$refs.eraser,
+        this.$refs.keypoint,
+        this.$refs.dextr
+      ];
+      let active = tools.find(tool => tool && tool.name === this.activeTool);
+      if (active && active.tool) active.tool.activate();
+    },
+    raiseAnnotations() {
+      let categories = this.$refs.category;
+      if (!categories) return;
+      categories.forEach(category => {
+        let annotations = category.$refs.annotation;
+        if (!annotations) return;
+        annotations.forEach(annotation => {
+          if (annotation.compoundPath) annotation.compoundPath.bringToFront();
+        });
+      });
     },
 
     setCursor(newCursor) {
@@ -1077,6 +1107,7 @@ export default {
 
     this.initCanvas();
     this.getData();
+    this.$nextTick(() => this.activateCurrentTool());
 
     this.$socket.emit("annotating", { image_id: this.image.id, active: true });
   },

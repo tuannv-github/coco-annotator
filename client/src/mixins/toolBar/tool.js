@@ -32,7 +32,9 @@ export default {
     onMouseDrag() {},
     onMouseUp() {},
     click() {
+      if (this.isDisabled) return;
       this.update();
+      if (this.tool) this.tool.activate();
     },
     update() {
       if (this.isDisabled) return;
