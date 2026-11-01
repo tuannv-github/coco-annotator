@@ -32,7 +32,11 @@ class DatasetModel(DynamicDocument):
         os.makedirs(directory, mode=0o777, exist_ok=True)
 
         self.directory = directory
-        self.owner = current_user.username if current_user else 'system'
+        try:
+            self.owner = current_user.username if current_user else 'system'
+        except RuntimeError:
+            if not self.owner:
+                self.owner = 'system'
 
         return super(DatasetModel, self).save(*args, **kwargs)
 
@@ -57,6 +61,25 @@ class DatasetModel(DynamicDocument):
         task.save()
 
         cel_task = import_annotations.delay(task.id, self.id, coco_json)
+
+        return {
+            "celery_id": cel_task.id,
+            "id": task.id,
+            "name": task.name
+        }
+
+    def import_yolo(self, source_dir):
+
+        from workers.tasks import import_yolo
+
+        task = TaskModel(
+            name="Import YOLO format into {}".format(self.name),
+            dataset_id=self.id,
+            group="Annotation Import"
+        )
+        task.save()
+
+        cel_task = import_yolo.delay(task.id, self.id, source_dir)
 
         return {
             "celery_id": cel_task.id,

@@ -11,6 +11,8 @@ from google_images_download import google_images_download as gid
 from ..util.pagination_util import Pagination
 from ..util import query_util, coco_util, profile
 
+from config import Config
+
 from database import (
     ImageModel,
     DatasetModel,
@@ -87,6 +89,80 @@ class Dataset(Resource):
             return {'message': 'Dataset already exists. Check the undo tab to fully delete the dataset.'}, 400
 
         return query_util.fix_ids(dataset)
+
+
+def _yolo_root():
+    return os.path.realpath(Config.YOLO_DATASET_DIRECTORY)
+
+
+def _yolo_source(name):
+    """Return a YOLO dataset directory under YOLO_DATASET_DIRECTORY, or None."""
+    if not isinstance(name, str) or not name or name.startswith(("/", "\\")):
+        return None
+    if any(part in ("", ".", "..") for part in name.split("/")):
+        return None
+    root = _yolo_root()
+    source = os.path.realpath(os.path.join(root, name))
+    try:
+        inside = os.path.commonpath([root, source]) == root
+    except ValueError:
+        return None
+    if not inside or not os.path.isdir(source):
+        return None
+    if not os.path.isfile(os.path.join(source, "data.yaml")):
+        return None
+    if not os.path.isdir(os.path.join(source, "images")):
+        return None
+    return source
+
+
+yolo_import = reqparse.RequestParser()
+yolo_import.add_argument('name', required=True, location='json')
+
+
+@api.route('/yolo')
+class DatasetYolo(Resource):
+    @login_required
+    def get(self):
+        """Lists YOLO datasets mounted for import."""
+        root = _yolo_root()
+        found = []
+        if not os.path.isdir(root):
+            return found
+        for name in sorted(os.listdir(root)):
+            source = _yolo_source(name)
+            if source is None:
+                continue
+            images = os.path.join(source, "images")
+            count = sum(
+                1 for filename in os.listdir(images)
+                if filename.lower().endswith((".jpg", ".jpeg", ".png"))
+            )
+            found.append({"name": name, "images": count})
+        return found
+
+    @api.expect(yolo_import)
+    @login_required
+    def post(self):
+        """Creates an annotator dataset and imports a mounted YOLO folder."""
+        args = yolo_import.parse_args()
+        name = args['name']
+        source = _yolo_source(name)
+        if source is None:
+            return {'message': 'Unknown YOLO dataset'}, 400
+
+        folder = os.path.basename(source)
+        try:
+            dataset = DatasetModel(name=folder)
+            dataset.save()
+        except NotUniqueError:
+            dataset = DatasetModel.objects(name=folder, deleted=False).first()
+            if dataset is None:
+                return {
+                    'message': 'Dataset already exists. Check the undo tab to fully delete the dataset.'
+                }, 400
+
+        return dataset.import_yolo(source)
 
 
 def download_images(output_dir, args):

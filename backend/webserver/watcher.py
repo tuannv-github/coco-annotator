@@ -2,6 +2,8 @@ from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
 from config import Config
+from mongoengine.errors import NotUniqueError
+
 from database import ImageModel
 from .util.thumbnails import generate_thumbnail
 
@@ -40,7 +42,10 @@ class ImageFolderHandler(FileSystemEventHandler):
 
         if image is None and event.event_type != 'deleted':
             self._log(f'Adding new file to database: {path}')
-            image = ImageModel.create_from_path(path).save()
+            try:
+                image = ImageModel.create_from_path(path).save()
+            except NotUniqueError:
+                return
             generate_thumbnail(image)
 
         elif event.event_type == 'moved':

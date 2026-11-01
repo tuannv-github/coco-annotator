@@ -67,5 +67,11 @@ export default {
   },
   resetMetadata(id) {
     return axios.get(`${baseURL}/${id}/reset/metadata`);
+  },
+  listYolo() {
+    return axios.get(`${baseURL}/yolo`);
+  },
+  importYolo(name) {
+    return axios.post(`${baseURL}/yolo`, { name });
   }
 };

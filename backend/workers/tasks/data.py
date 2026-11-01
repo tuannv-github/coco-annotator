@@ -21,6 +21,7 @@ from celery import shared_task
 from config import Config
 from ..socket import create_socket
 from mongoengine import Q
+from mongoengine.errors import NotUniqueError
 
 
 def _yolo_box(annotation, width, height):
@@ -407,4 +408,139 @@ def import_annotations(task_id, dataset_id, coco_json):
     task.set_progress(100, socket=socket)
 
 
-__all__ = ["export_annotations", "import_annotations"]
+def _yolo_names(path):
+    names = {}
+    in_names = False
+    with open(path, "r") as handle:
+        for raw in handle:
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line == "names:":
+                in_names = True
+                continue
+            if not in_names:
+                continue
+            if not line[0].isdigit() or ":" not in line:
+                break
+            key, value = line.split(":", 1)
+            names[int(key)] = value.strip().strip("'\"")
+    if not names:
+        raise ValueError(f"no class names in {path}")
+    return names
+
+
+def _category(name, dataset):
+    category = CategoryModel.objects(name__iexact=name).first()
+    if category is None:
+        category = CategoryModel(name=name)
+        category.save()
+    if category.id not in dataset.categories:
+        dataset.categories.append(category.id)
+        dataset.update(set__categories=dataset.categories)
+    return category
+
+
+@shared_task
+def import_yolo(task_id, dataset_id, source_dir):
+    """Copy a YOLO export into an annotator dataset and create bbox annotations."""
+    task = TaskModel.objects.get(id=task_id)
+    dataset = DatasetModel.objects.get(id=dataset_id)
+    task.update(status="PROGRESS")
+    socket = create_socket()
+    task.info(f"Importing YOLO dataset {source_dir}")
+
+    images_dir = os.path.join(source_dir, "images")
+    labels_dir = os.path.join(source_dir, "labels")
+    names = _yolo_names(os.path.join(source_dir, "data.yaml"))
+    categories = {index: _category(name, dataset) for index, name in names.items()}
+    frames = sorted(
+        name for name in os.listdir(images_dir)
+        if name.lower().endswith(ImageModel.PATTERN)
+    )
+    os.makedirs(dataset.directory, exist_ok=True)
+    total = max(len(frames), 1)
+    created_images = 0
+    created_boxes = 0
+
+    for index, name in enumerate(frames, start=1):
+        source = os.path.join(images_dir, name)
+        destination = os.path.join(dataset.directory, name)
+        if not os.path.isfile(destination):
+            shutil.copy2(source, destination)
+        image = ImageModel.objects(path=destination).first()
+        if image is None:
+            try:
+                image = ImageModel.create_from_path(destination, dataset.id).save()
+                created_images += 1
+            except NotUniqueError:
+                image = ImageModel.objects(path=destination).first()
+        if image is None:
+            task.info(f"Skipped {name}: image record was not created")
+            continue
+        label_path = os.path.join(labels_dir, os.path.splitext(name)[0] + ".txt")
+        boxes = []
+        if os.path.isfile(label_path):
+            with open(label_path, "r") as handle:
+                for raw in handle:
+                    parts = raw.split()
+                    if len(parts) != 5:
+                        continue
+                    class_id = int(float(parts[0]))
+                    center_x, center_y, width, height = [float(value) for value in parts[1:]]
+                    if class_id not in categories or width <= 0 or height <= 0:
+                        continue
+                    boxes.append((class_id, center_x, center_y, width, height))
+        category_ids = []
+        for class_id, center_x, center_y, width, height in boxes:
+            category = categories[class_id]
+            box_w = width * image.width
+            box_h = height * image.height
+            left = (center_x - width / 2.0) * image.width
+            top = (center_y - height / 2.0) * image.height
+            right = left + box_w
+            bottom = top + box_h
+            segmentation = [[
+                round(left, 1), round(top, 1),
+                round(right, 1), round(top, 1),
+                round(right, 1), round(bottom, 1),
+                round(left, 1), round(bottom, 1)
+            ]]
+            bbox = [int(round(left)), int(round(top)), int(round(box_w)), int(round(box_h))]
+            exists = AnnotationModel.objects(
+                image_id=image.id,
+                category_id=category.id,
+                deleted=False,
+                bbox=bbox
+            ).first()
+            if exists is None:
+                annotation = AnnotationModel(image_id=image.id)
+                annotation.category_id = category.id
+                annotation.segmentation = segmentation
+                annotation.bbox = bbox
+                annotation.area = int(round(box_w * box_h))
+                annotation.isbbox = True
+                annotation.color = category.color
+                annotation.save()
+                created_boxes += 1
+            if category.id not in category_ids:
+                category_ids.append(category.id)
+        image.update(
+            set__annotated=bool(category_ids),
+            set__num_annotations=len(boxes),
+            set__category_ids=category_ids
+        )
+        if index % 100 == 0 or index == len(frames):
+            task.set_progress((index / total) * 100, socket=socket)
+            task.info(f"Imported {index}/{len(frames)} images, {created_boxes} boxes")
+
+    from .thumbnails import thumbnail_generate_single_image
+    pending = ImageModel.objects(dataset_id=dataset.id, regenerate_thumbnail=True).only("id")
+    for image in pending:
+        thumbnail_generate_single_image.delay(image.id)
+
+    task.info(f"Done. {created_images} new images, {created_boxes} boxes")
+    task.set_progress(100, socket=socket)
+
+
+__all__ = ["export_annotations", "import_annotations", "import_yolo"]

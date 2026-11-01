@@ -17,6 +17,7 @@ export default {
       name: "Select",
       cursor: "pointer",
       movePath: false,
+      bboxDrag: null,
       point: null,
       segment: null,
       scaleFactor: 15,
@@ -169,14 +170,179 @@ export default {
       this.hover.text.bringToFront();
     },
     checkBbox(paperObject) {
-      if (!paperObject) return false;
+      if (!paperObject || !paperObject.data) return false;
       let annotationId = paperObject.data.annotationId;
       let categoryId = paperObject.data.categoryId;
+      if (annotationId == null || categoryId == null) return false;
       let category = this.$parent.getCategory(categoryId);
+      if (!category) return false;
       let annotation = category.getAnnotation(annotationId);
-      return annotation.annotation.isbbox;
+      if (!annotation || !annotation.annotation) return false;
+      return !!annotation.annotation.isbbox;
+    },
+    bboxCompound(item) {
+      if (!item) return null;
+      let compound = item.className === "CompoundPath" ? item : item.parent;
+      if (!compound || compound.className !== "CompoundPath") return null;
+      if (!this.checkBbox(compound)) return null;
+      let path = compound.children && compound.children[0];
+      if (!path || !path.segments || path.segments.length < 4) return null;
+      return compound;
+    },
+    bboxEdgesNear(path, point, tolerance) {
+      let bounds = path.bounds;
+      let edges = { left: false, right: false, top: false, bottom: false };
+      let count = path.segments.length;
+      for (let i = 0; i < count; i++) {
+        let start = path.segments[i].point;
+        let end = path.segments[(i + 1) % count].point;
+        let dx = end.x - start.x;
+        let dy = end.y - start.y;
+        let length2 = dx * dx + dy * dy;
+        if (length2 < 1) continue;
+        let t = ((point.x - start.x) * dx + (point.y - start.y) * dy) / length2;
+        t = Math.max(0, Math.min(1, t));
+        let x = start.x + t * dx;
+        let y = start.y + t * dy;
+        let dist = Math.hypot(point.x - x, point.y - y);
+        if (dist > tolerance) continue;
+        if (Math.abs(dy) <= Math.abs(dx)) {
+          let midY = (start.y + end.y) / 2;
+          if (Math.abs(midY - bounds.top) <= Math.abs(midY - bounds.bottom)) {
+            edges.top = true;
+          } else {
+            edges.bottom = true;
+          }
+        } else {
+          let midX = (start.x + end.x) / 2;
+          if (Math.abs(midX - bounds.left) <= Math.abs(midX - bounds.right)) {
+            edges.left = true;
+          } else {
+            edges.right = true;
+          }
+        }
+      }
+      if (!edges.left && !edges.right && !edges.top && !edges.bottom) return null;
+      return edges;
+    },
+    bboxCursor(edges) {
+      if ((edges.left && edges.top) || (edges.right && edges.bottom)) {
+        return "nwse-resize";
+      }
+      if ((edges.right && edges.top) || (edges.left && edges.bottom)) {
+        return "nesw-resize";
+      }
+      if (edges.left || edges.right) return "ew-resize";
+      if (edges.top || edges.bottom) return "ns-resize";
+      return "move";
+    },
+    bboxHit(point) {
+      let tolerance = Math.max(this.edit.indicatorSize || 0, 8);
+      let project = this.$parent.paper.project;
+      let ignoreIndicator = hit => !hit.item.hasOwnProperty("indicator");
+      let segmentHit = project.hitTest(point, {
+        segments: true,
+        stroke: true,
+        fill: false,
+        tolerance: tolerance,
+        match: ignoreIndicator
+      });
+      if (
+        segmentHit &&
+        !this.bboxCompound(segmentHit.item) &&
+        !segmentHit.item.hasOwnProperty("indicator")
+      ) {
+        return null;
+      }
+      let fillHit = project.hitTest(point, {
+        fill: true,
+        stroke: false,
+        segments: false,
+        tolerance: tolerance,
+        match: ignoreIndicator
+      });
+      if (!fillHit) return null;
+      let compound = this.bboxCompound(fillHit.item);
+      if (!compound) return null;
+      let path = compound.children[0];
+      let edges = this.bboxEdgesNear(path, point, tolerance);
+      if (!edges) return { mode: "move", path: path };
+      return {
+        mode: "resize",
+        path: path,
+        edges: edges,
+        bounds: path.bounds.clone()
+      };
+    },
+    beginBboxDrag(event) {
+      let hit = this.bboxHit(event.point);
+      if (!hit) return false;
+      if (hit.mode === "move") {
+        this.bboxDrag = {
+          mode: "move",
+          path: hit.path,
+          point: event.point.clone()
+        };
+        this.$emit("setcursor", "move");
+      } else {
+        this.bboxDrag = {
+          mode: "resize",
+          path: hit.path,
+          bounds: hit.bounds,
+          edges: hit.edges
+        };
+        this.$emit("setcursor", this.bboxCursor(hit.edges));
+      }
+      return true;
+    },
+    resizeBbox(drag, point) {
+      let bounds = drag.bounds;
+      let min = Math.max((this.scale || 1) * 2, 2);
+      let left = drag.edges.left ? point.x : bounds.left;
+      let right = drag.edges.right ? point.x : bounds.right;
+      let top = drag.edges.top ? point.y : bounds.top;
+      let bottom = drag.edges.bottom ? point.y : bounds.bottom;
+      if (right - left < min) {
+        if (drag.edges.left) left = right - min;
+        else right = left + min;
+      }
+      if (bottom - top < min) {
+        if (drag.edges.top) top = bottom - min;
+        else bottom = top + min;
+      }
+      let path = drag.path;
+      path.removeSegments();
+      path.add(new paper.Point(left, top));
+      path.add(new paper.Point(right, top));
+      path.add(new paper.Point(right, bottom));
+      path.add(new paper.Point(left, bottom));
+      path.closed = true;
+    },
+    finishBboxDrag() {
+      let drag = this.bboxDrag;
+      this.bboxDrag = null;
+      if (!drag || !drag.path || !drag.path.parent) return;
+      let data = drag.path.parent.data || {};
+      let category = this.$parent.getCategory(data.categoryId);
+      if (!category) return;
+      let annotation = category.getAnnotation(data.annotationId);
+      if (annotation && annotation.emitModify) annotation.emitModify();
+    },
+    syncBboxCursor(point) {
+      let hit = this.bboxHit(point);
+      if (!hit) {
+        this.$emit("setcursor", this.cursor);
+        return;
+      }
+      if (hit.mode === "move") {
+        this.$emit("setcursor", "move");
+        return;
+      }
+      this.$emit("setcursor", this.bboxCursor(hit.edges));
     },
     onMouseDown(event) {
+      if (this.beginBboxDrag(event)) return;
+
       let hitResult = this.$parent.paper.project.hitTest(
         event.point,
         this.hitOptions
@@ -234,6 +400,16 @@ export default {
       this.point.indicator = true;
     },
     onMouseDrag(event) {
+      if (this.bboxDrag) {
+        let drag = this.bboxDrag;
+        if (drag.mode === "move") {
+          drag.path.translate(event.point.subtract(drag.point));
+          drag.point = event.point.clone();
+        } else {
+          this.resizeBbox(drag, event.point);
+        }
+        return;
+      }
       if (this.isBbox && this.moveObject) {
         let delta_x = this.initPoint.x - event.point.x;
         let delta_y = this.initPoint.y - event.point.y;
@@ -274,13 +450,15 @@ export default {
     },
 
     onMouseUp(event) {
+      this.finishBboxDrag();
       this.clear();
     },
 
     onMouseMove(event) {
       // ensures that the initPoint is always tracked. 
       // Necessary for the introduced pan functionality and fixes a bug with selecting and dragging bboxes, since initPoint is initially undefined
-      this.initPoint = event.point;  
+      this.initPoint = event.point;
+      this.syncBboxCursor(event.point);  
 
       let hitResult = this.$parent.paper.project.hitTest(
         event.point,

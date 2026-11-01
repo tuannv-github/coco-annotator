@@ -35,7 +35,9 @@
             >
               Create
             </button>
-            <button type="button" class="btn btn-primary">Import</button>
+            <button type="button" class="btn btn-primary" @click="openImport">
+              Import
+            </button>
             <button
               type=" button"
               class="btn btn-secondary"
@@ -133,6 +135,51 @@
       </div>
     </div>
 
+    <div class="modal fade" tabindex="-1" role="dialog" id="importYolo">
+      <div class="modal-dialog" role="document">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Import YOLO dataset</h5>
+            <button
+              type="button"
+              class="close"
+              data-dismiss="modal"
+              aria-label="Close"
+            >
+              <span aria-hidden="true">&times;</span>
+            </button>
+          </div>
+          <div class="modal-body">
+            <p v-if="yolo.loading">Looking for YOLO datasets...</p>
+            <p v-else-if="yolo.error" class="text-danger">{{ yolo.error }}</p>
+            <p v-else-if="yolo.datasets.length === 0">
+              No YOLO dataset with a data.yaml was found.
+            </p>
+            <div v-else class="list-group">
+              <button
+                v-for="item in yolo.datasets"
+                :key="item.name"
+                type="button"
+                class="list-group-item list-group-item-action"
+                :disabled="yolo.importing"
+                @click="importYolo(item.name)"
+              >
+                {{ item.name }}
+                <span class="badge badge-secondary float-right">
+                  {{ item.images }} images
+                </span>
+              </button>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-dismiss="modal">
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="modal fade" tabindex="-1" role="dialog" id="helpDataset">
       <div class="modal-dialog" role="document">
         <div class="modal-content">
@@ -182,6 +229,7 @@
 </template>
 
 <script>
+import $ from "jquery";
 import toastrs from "@/mixins/toastrs";
 import Datasets from "@/models/datasets";
 import AdminPanel from "@/models/admin";
@@ -207,7 +255,13 @@ export default {
       datasets: [],
       subdirectories: [],
       categories: [],
-      users: []
+      users: [],
+      yolo: {
+        datasets: [],
+        loading: false,
+        importing: false,
+        error: ""
+      }
     };
   },
   methods: {
@@ -253,6 +307,41 @@ export default {
             "Creating Dataset",
             error.response.data.message
           );
+        });
+    },
+    openImport() {
+      this.yolo.error = "";
+      this.yolo.datasets = [];
+      this.yolo.loading = true;
+      $("#importYolo").modal("show");
+      Datasets.listYolo()
+        .then(response => {
+          this.yolo.datasets = response.data;
+        })
+        .catch(error => {
+          let data = error.response && error.response.data;
+          this.yolo.error = (data && data.message) || "Could not list YOLO datasets";
+        })
+        .finally(() => {
+          this.yolo.loading = false;
+        });
+    },
+    importYolo(name) {
+      if (this.yolo.importing) return;
+      this.yolo.importing = true;
+      this.yolo.error = "";
+      Datasets.importYolo(name)
+        .then(response => {
+          $("#importYolo").modal("hide");
+          this.updatePage();
+          this.$router.push({ path: "/tasks", query: { id: response.data.id } });
+        })
+        .catch(error => {
+          let data = error.response && error.response.data;
+          this.yolo.error = (data && data.message) || "Import failed";
+        })
+        .finally(() => {
+          this.yolo.importing = false;
         });
     }
   },
