@@ -16,6 +16,7 @@ import json
 import os
 
 from celery import shared_task
+from config import Config
 from ..socket import create_socket
 from mongoengine import Q
 
@@ -114,11 +115,9 @@ def export_annotations(task_id, dataset_id, categories, with_empty_images=False)
         f"Done export {total_annotations} annotations and {total_images} images from {dataset.name}")
 
     timestamp = time.time()
-    directory = f"{dataset.directory}.exports/"
-    file_path = f"{directory}coco-{timestamp}.json"
-
-    if not os.path.exists(directory):
-        os.makedirs(directory)
+    directory = os.path.join(Config.EXPORT_DIRECTORY.rstrip("/"), dataset.name)
+    file_path = os.path.join(directory, f"coco-{timestamp}.json")
+    os.makedirs(directory, exist_ok=True)
 
     task.info(f"Writing export to file {file_path}")
     with open(file_path, 'w') as fp:

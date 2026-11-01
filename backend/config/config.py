@@ -57,6 +57,7 @@ class Config:
 
     ### Dataset Options
     DATASET_DIRECTORY = os.getenv("DATASET_DIRECTORY", "/datasets/")
+    EXPORT_DIRECTORY = os.getenv("EXPORT_DIRECTORY", "/exports")
     INITIALIZE_FROM_FILE = os.getenv("INITIALIZE_FROM_FILE")
 
     ### User Options
