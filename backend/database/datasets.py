@@ -20,6 +20,7 @@ class DatasetModel(DynamicDocument):
     users = ListField(default=[])
 
     annotate_url = StringField(default="")
+    note = StringField(default="")
 
     default_annotation_metadata = DictField(default={})
 

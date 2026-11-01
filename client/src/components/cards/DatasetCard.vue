@@ -30,6 +30,7 @@
         />
 
         <br />
+        <p v-if="dataset.note" class="dataset-note">{{ dataset.note }}</p>
 
         <div>
           <div v-if="dataset.numberImages > 0">
@@ -117,6 +118,16 @@
           </div>
           <div class="modal-body">
             <form>
+              <div class="form-group">
+                <label>Note</label>
+                <textarea
+                  v-model="note"
+                  class="form-control"
+                  rows="3"
+                  placeholder="Additional note for this dataset"
+                ></textarea>
+              </div>
+
               <div class="form-group">
                 <label>Default Categories</label>
                 <TagsInput
@@ -236,6 +247,7 @@ export default {
     return {
       imageError: false,
       selectedCategories: [],
+      note: this.dataset.note || "",
       defaultMetadata: this.dataset.default_annotation_metadata,
       noImageUrl: require("@/assets/no-image.png"),
       notFoundImageUrl: require("@/assets/404-image.png"),
@@ -284,6 +296,7 @@ export default {
       axios
         .post("/api/dataset/" + this.dataset.id, {
           categories: this.selectedCategories,
+          note: this.note || "",
           default_annotation_metadata: this.$refs.defaultAnnotation.export()
         })
         .then(() => {
@@ -357,6 +370,11 @@ export default {
       return users;
     }
   },
+  watch: {
+    "dataset.note"(value) {
+      this.note = value || "";
+    }
+  },
   mounted() {
     this.createSelectedCategories();
     this.createSelectedUsers();
@@ -376,6 +394,18 @@ export default {
 p {
   margin: 0;
   padding: 0 0 3px 0;
+}
+
+.dataset-note {
+  clear: both;
+  margin: 4px 0 6px 0;
+  font-size: 12px;
+  color: #4b5162;
+  white-space: pre-wrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .category-badge {

@@ -32,6 +32,8 @@ dataset_create = reqparse.RequestParser()
 dataset_create.add_argument('name', required=True)
 dataset_create.add_argument('categories', type=list, required=False, location='json',
                             help="List of default categories for sub images")
+dataset_create.add_argument('note', type=str, default='', location='json',
+                            help="Additional note stored with this dataset")
 
 page_data = reqparse.RequestParser()
 page_data.add_argument('page', default=1, type=int)
@@ -54,7 +56,9 @@ export.add_argument('format', type=str, default='coco', required=False, help='co
 update_dataset = reqparse.RequestParser()
 update_dataset.add_argument('categories', location='json', type=list, help="New list of categories")
 update_dataset.add_argument('default_annotation_metadata', location='json', type=dict,
-                            help="Default annotation metadata")                            
+                            help="Default annotation metadata")
+update_dataset.add_argument('note', location='json', type=str,
+                            help="Additional note stored with this dataset")                            
 
 dataset_generate = reqparse.RequestParser()
 dataset_generate.add_argument('keywords', location='json', type=list, default=[],
@@ -79,11 +83,12 @@ class Dataset(Resource):
         args = dataset_create.parse_args()
         name = args['name']
         categories = args.get('categories', [])
+        note = (args.get('note') or '')[:4000]
 
         category_ids = CategoryModel.bulk_create(categories)
 
         try:
-            dataset = DatasetModel(name=name, categories=category_ids)
+            dataset = DatasetModel(name=name, categories=category_ids, note=note)
             dataset.save()
         except NotUniqueError:
             return {'message': 'Dataset already exists. Check the undo tab to fully delete the dataset.'}, 400
@@ -338,7 +343,7 @@ class DatasetId(Resource):
         args = update_dataset.parse_args()
         categories = args.get('categories')
         default_annotation_metadata = args.get('default_annotation_metadata')
-        set_default_annotation_metadata = args.get('set_default_annotation_metadata')
+        note = args.get('note')
 
         if categories is not None:
             dataset.categories = CategoryModel.bulk_create(categories)
@@ -356,10 +361,14 @@ class DatasetId(Resource):
                 AnnotationModel.objects(dataset_id=dataset.id, deleted=False)\
                     .update(**update)
 
-        dataset.update(
-            categories=dataset.categories,
-            default_annotation_metadata=dataset.default_annotation_metadata
-        )
+        fields = {
+            'categories': dataset.categories,
+            'default_annotation_metadata': dataset.default_annotation_metadata
+        }
+        if note is not None:
+            fields['note'] = note[:4000]
+
+        dataset.update(**fields)
 
         return {"success": True}
 

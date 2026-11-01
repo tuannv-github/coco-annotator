@@ -196,6 +196,23 @@
     >
       <div style="padding-top: 10px" />
       <h3>{{ dataset.name }}</h3>
+      <div class="sidebar-section dataset-note">
+        <h6 class="sidebar-title">Note</h6>
+        <textarea
+          class="note-input"
+          rows="4"
+          v-model="noteDraft"
+          placeholder="Additional note for this dataset"
+          @input="noteDirty = true"
+        ></textarea>
+        <button
+          type="button"
+          class="btn btn-sm btn-success btn-block"
+          @click="saveNote"
+        >
+          Save note
+        </button>
+      </div>
       <p class="text-center" style="color: lightgray">
         Total of <strong style="color: white">{{ imageCount }}</strong> images
         displayed on <strong style="color: white">{{ pages }}</strong> pages.
@@ -572,7 +589,9 @@ export default {
         showAnnotated: true,
         showNotAnnotated: true
       },
-      stats: null
+      stats: null,
+      noteDraft: "",
+      noteDirty: false
     };
   },
   methods: {
@@ -609,6 +628,9 @@ export default {
           this.pages = data.pages;
 
           this.subdirectories = data.subdirectories;
+          if (!this.noteDirty) {
+            this.noteDraft = (data.dataset && data.dataset.note) || "";
+          }
           // this.scan.id = data.scanId;
           // this.generate.id = data.generateId;
           // this.importing.id = data.importId;
@@ -631,6 +653,23 @@ export default {
       Dataset.getExports(this.dataset.id).then(response => {
         this.datasetExports = response.data;
       });
+    },
+    saveNote() {
+      const note = this.noteDraft || "";
+      Dataset.update(this.dataset.id, { note })
+        .then(() => {
+          this.dataset.note = note;
+          this.noteDirty = false;
+          this.axiosReqestSuccess("Note", "Saved for this dataset");
+        })
+        .catch(error => {
+          this.axiosReqestError(
+            "Saving note",
+            error.response && error.response.data
+              ? error.response.data.message
+              : "Could not save the note"
+          );
+        });
     },
     resetMetadata() {
       let r = confirm("You can not undo reseting of all metadata in"
@@ -845,6 +884,8 @@ export default {
   },
   beforeRouteUpdate() {
     this.dataset.id = parseInt(this.identifier);
+    this.noteDirty = false;
+    this.noteDraft = "";
     this.updatePage();
   },
   created() {
@@ -923,6 +964,21 @@ export default {
   background-color: #383c4a;
   padding: 0 5px 2px 5px;
   overflow: auto;
+}
+
+.dataset-note {
+  padding-bottom: 8px;
+}
+
+.note-input {
+  display: block;
+  width: 100%;
+  margin: 4px 0;
+  border: 0;
+  border-radius: 3px;
+  padding: 4px;
+  resize: vertical;
+  color: #212529;
 }
 
 .export-body {

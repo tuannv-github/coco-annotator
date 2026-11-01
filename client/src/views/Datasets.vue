@@ -99,6 +99,16 @@
               </div>
 
               <div class="form-group">
+                <label>Note</label>
+                <textarea
+                  v-model="create.note"
+                  class="form-control"
+                  rows="3"
+                  placeholder="Additional note for this dataset"
+                ></textarea>
+              </div>
+
+              <div class="form-group">
                 <label>Default Categories</label>
                 <TagsInput
                   v-model="create.categories"
@@ -250,7 +260,8 @@ export default {
       page: 1,
       create: {
         name: "",
-        categories: []
+        categories: [],
+        note: ""
       },
       datasets: [],
       subdirectories: [],
@@ -296,10 +307,11 @@ export default {
       for (let key in this.create.categories) {
         categories.push(this.create.categories[key]);
       }
-      Datasets.create(this.create.name, categories)
+      Datasets.create(this.create.name, categories, this.create.note)
         .then(() => {
           this.create.name = "";
           this.create.categories = [];
+          this.create.note = "";
           this.updatePage();
         })
         .catch(error => {

@@ -17,10 +17,14 @@ export default {
       }
     });
   },
-  create(name, categories) {
+  create(name, categories, note) {
     return axios.post(`${baseURL}/?name=${name}`, {
-      categories: categories
+      categories: categories,
+      note: note || ""
     });
+  },
+  update(id, body) {
+    return axios.post(`${baseURL}/${id}`, body);
   },
   generate(id, body) {
     return axios.post(`${baseURL}/${id}/generate`, {
