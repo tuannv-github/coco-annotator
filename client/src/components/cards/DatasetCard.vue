@@ -1,25 +1,48 @@
 <template>
-  <div class="col-md-3">
-    <!-- Dataset Card -->
-    <div class="card mb-4 box-shadow">
-      <!-- Display Image -->
+  <tr>
+    <td class="thumb-cell">
       <img
         @click="onImageClick"
         :src="imageUrl"
-        class="card-img-top"
+        class="dataset-thumb"
         @error="imageError = true"
-        style="width: 100%; display: block;"
       />
-
-      <!-- Card Body -->
-      <div class="card-body">
-        <span
-          class="d-inline-block text-truncate"
-          style="max-width: 85%; float: left"
-        >
-          <strong class="card-title">{{ dataset.name }}</strong>
-        </span>
-
+    </td>
+    <td class="name-cell">
+      <strong class="dataset-name">{{ dataset.name }}</strong>
+      <p v-if="dataset.note" class="dataset-note">{{ dataset.note }}</p>
+      <div
+        v-show="$store.getters['user/loginEnabled']"
+        class="dataset-owner"
+      >
+        Created by {{ dataset.owner }}
+      </div>
+    </td>
+    <td class="progress-cell">
+      <div v-if="dataset.numberImages > 0">
+        {{ dataset.numberAnnotated }} of {{ dataset.numberImages }} annotated
+        <div class="progress">
+          <div
+            class="progress-bar"
+            role="progressbar"
+            :style="{ width: percent + '%' }"
+          ></div>
+        </div>
+      </div>
+      <p v-else>No images</p>
+    </td>
+    <td class="categories-cell">
+      <span
+        v-for="(category, index) in listCategories"
+        :key="index"
+        class="badge badge-pill badge-primary category-badge"
+        :style="{ 'background-color': category.color }"
+      >
+        {{ category.name }}
+      </span>
+    </td>
+    <td class="actions-cell">
+      <div class="dropdown">
         <i
           class="card-text fa fa-ellipsis-v fa-x icon-more"
           :id="'dropdownDataset' + dataset.id"
@@ -28,36 +51,8 @@
           aria-expanded="false"
           aria-hidden="true"
         />
-
-        <br />
-        <p v-if="dataset.note" class="dataset-note">{{ dataset.note }}</p>
-
-        <div>
-          <div v-if="dataset.numberImages > 0">
-            {{ dataset.numberAnnotated }} of {{ dataset.numberImages }} images
-            annotated.
-            <div class="progress">
-              <div
-                class="progress-bar"
-                role="progressbar"
-                :style="{ width: percent + '%' }"
-              ></div>
-            </div>
-          </div>
-
-          <p v-else>No images in dataset.</p>
-          <span
-            v-for="(category, index) in listCategories"
-            :key="index"
-            class="badge badge-pill badge-primary category-badge"
-            :style="{ 'background-color': category.color }"
-          >
-            {{ category.name }}
-          </span>
-        </div>
-
         <div
-          class="dropdown-menu"
+          class="dropdown-menu dropdown-menu-right"
           :aria-labelledby="'dropdownDataset' + dataset.id"
         >
           <button
@@ -92,14 +87,6 @@
           </button>
         </div>
       </div>
-
-      <div
-        v-show="$store.getters['user/loginEnabled']"
-        class="card-footer text-muted"
-      >
-        Created by {{ dataset.owner }}
-      </div>
-    </div>
 
     <!-- Edit Dataset -->
     <div class="modal fade" role="dialog" :id="'datasetEdit' + dataset.id">
@@ -219,7 +206,8 @@
         </div>
       </div>
     </div>
-  </div>
+    </td>
+  </tr>
 </template>
 
 <script>
@@ -383,34 +371,52 @@ export default {
 </script>
 
 <style scoped>
-.card-img-overlay {
-  padding: 0 10px 0 0;
-}
-
-.card-body {
-  padding: 10px 10px 0 10px;
-}
-
 p {
   margin: 0;
   padding: 0 0 3px 0;
 }
 
+.thumb-cell {
+  width: 96px;
+}
+
+.dataset-thumb {
+  width: 84px;
+  height: 64px;
+  object-fit: cover;
+  display: block;
+  cursor: pointer;
+  background: #dee2e6;
+}
+
+.name-cell {
+  min-width: 280px;
+}
+
+.dataset-name {
+  display: block;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
 .dataset-note {
-  clear: both;
-  margin: 4px 0 6px 0;
+  margin: 4px 0 0 0;
   font-size: 12px;
   color: #4b5162;
   white-space: pre-wrap;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+}
+
+.dataset-owner {
+  margin-top: 4px;
+  color: #6c757d;
+  font-size: 11px;
 }
 
 .category-badge {
-  float: left;
-  margin: 0 2px 5px 0;
+  margin: 0 2px 4px 0;
 }
 
 .list-group-item {
@@ -420,20 +426,28 @@ p {
   background-color: #4b5162;
 }
 .icon-more {
-  width: 10%;
   margin: 3px 0;
-  padding: 0;
-  float: right;
+  padding: 4px 8px;
   color: black;
+  cursor: pointer;
+}
+
+.thumb-cell,
+.name-cell,
+.progress-cell,
+.categories-cell,
+.actions-cell {
+  text-align: left;
+  vertical-align: top;
+}
+
+.actions-cell {
+  width: 48px;
 }
 
 .progress {
-  margin: 0 5px 7px 5px;
+  margin: 4px 0 0 0;
   height: 5px;
-}
-.card-footer {
-  padding: 2px;
-  font-size: 11px;
 }
 
 .delete {

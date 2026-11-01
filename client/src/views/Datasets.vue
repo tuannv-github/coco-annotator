@@ -52,16 +52,27 @@
         <p v-if="datasets.length < 1" class="text-center">
           You need to create a dataset!
         </p>
-        <div v-else style="background-color: gray">
+        <div v-else>
           <Pagination :pages="pages" @pagechange="updatePage" />
-          <div class="row bg-light">
-            <DatasetCard
-              v-for="dataset in datasets"
-              :key="dataset.id"
-              :dataset="dataset"
-              :categories="categories"
-            />
-          </div>
+          <table class="table table-hover bg-white datasets-table">
+            <thead>
+              <tr>
+                <th></th>
+                <th>Dataset</th>
+                <th>Annotated</th>
+                <th>Categories</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <DatasetCard
+                v-for="dataset in datasets"
+                :key="dataset.id"
+                :dataset="dataset"
+                :categories="categories"
+              />
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -393,5 +404,19 @@ export default {
   color: darkblue;
   font-size: 20px;
   display: inline;
+}
+
+.datasets-table {
+  table-layout: auto;
+  text-align: left;
+}
+
+.datasets-table th,
+.datasets-table >>> td {
+  text-align: left;
+}
+
+.datasets-table th {
+  border-top: 0;
 }
 </style>
